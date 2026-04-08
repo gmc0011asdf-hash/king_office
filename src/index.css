@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+  
+  /* Premium Colors */
+  --color-premium-indigo: #4338ca;
+  --color-premium-rose: #be123c;
+  --color-premium-amber: #b45309;
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-white/70 dark:bg-slate-800/60 backdrop-blur-md border border-white/20 dark:border-slate-700/50 shadow-xl;
+  }
+  
+  .premium-gradient-indigo {
+    @apply bg-gradient-to-br from-indigo-600 to-violet-700 text-white;
+  }
+  
+  .premium-gradient-rose {
+    @apply bg-gradient-to-br from-rose-500 to-pink-600 text-white;
+  }
+  
+  .premium-gradient-amber {
+    @apply bg-gradient-to-br from-amber-500 to-orange-600 text-white;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+  }
+  
+  .hover-scale {
+    @apply transition-transform duration-300 hover:scale-[1.02] active:scale-[0.98];
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+  /* إجبار الوضع العادي (الفاتح) للتقارير القابلة للطباعة بغض النظر عن الوضع الليلي */
+  .dark, .dark * {
+    background-color: white !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: white !important;
+    color: #0f172a !important;
+  }
+  table {
+    page-break-inside: auto;
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+  th, td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px !important;
+  }
+  th {
+    background-color: #f8fafc !important;
+    color: #334155 !important;
+    font-weight: bold !important;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    overflow: visible !important;
+  }
+}

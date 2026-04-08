@@ -1,0 +1,11 @@
+﻿MODULE: INTERNET
+
+TABLES:
+- subscribers
+- subscriber_history
+- internet_zones
+- internet_fats
+- subscription_categories
+- internet_materials
+- internet_material_sales
+- wallet_transactions

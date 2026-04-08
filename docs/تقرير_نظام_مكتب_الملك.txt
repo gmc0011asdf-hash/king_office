@@ -1,0 +1,464 @@
+================================================================================
+                    تقرير مفصل عن نظام مكتب الملك
+                    توثيق الملفات والوظائف
+================================================================================
+تاريخ الإعداد: 2025
+الإصدار: 2.0 (محدّث بدقة)
+================================================================================
+
+1. نظرة عامة على النظام
+--------------------------------------------------------------------------------
+نظام مكتب الملك هو نظام إداري متكامل لإدارة مكتب خدمة الإنترنت والمكاتب التجارية.
+يتكون من:
+- واجهة أمامية (Frontend): React 19 + TypeScript + Vite 6
+- واجهة خلفية (Backend): Python FastAPI
+- قاعدة بيانات: PostgreSQL (افتراضي) أو SQLite (اختياري)
+
+الوظائف الرئيسية:
+- إدارة المشتركين (FTTH و Wireless)
+- إدارة المحفظة والتعبئة
+- إدارة المواد والمبيعات
+- إدارة البطاقات (Switch، Qi) والخطوط (SIM)
+- إدارة الشركاء والموردين
+- التقارير المالية
+- لوحة التحكم
+- إدارة المستخدمين والصلاحيات
+- الوضع الليلي
+- التقارير القابلة للطباعة (دائماً بالوضع العادي)
+
+
+2. هيكل المشروع الرئيسي
+--------------------------------------------------------------------------------
+
+king_office/
+├── src/                    # كود الواجهة الأمامية (React)
+├── backend/                # كود الخادم الخلفي (Python FastAPI)
+├── public/                 # الملفات الثابتة
+├── dist/                   # ملفات البناء النهائية (بعد npm run build)
+├── scripts/                # سكربتات مساعدة
+├── docs/                   # التوثيق
+├── package.json            # تبعيات المشروع
+├── vite.config.ts          # إعدادات Vite
+├── tsconfig.json           # إعدادات TypeScript
+├── index.html              # نقطة الدخول HTML
+├── server.ts               # خادم Express بديل (للتطوير)
+├── .env                    # متغيرات البيئة
+└── .env.example            # نموذج متغيرات البيئة
+
+
+3. ملفات الجذر (Root)
+--------------------------------------------------------------------------------
+
+package.json
+    الوظيفة: إدارة التبعيات وسكربتات التشغيل.
+    السكربتات:
+    - dev: تشغيل واجهة التطوير (Vite على المنفذ 5173)
+    - dev:backend: تشغيل الخادم الخلفي (uvicorn على المنفذ 8000)
+    - start: تشغيل الواجهة والخادم معاً (concurrently)
+    - build: بناء المشروع للإنتاج
+    - preview: معاينة البناء
+    - clean:db: تنظيف قاعدة البيانات
+    - dev_legacy: تشغيل server.ts (Express)
+
+vite.config.ts
+    الوظيفة: إعدادات أداة Vite للبناء والتطوير.
+    - تكوين React و Tailwind CSS v4
+    - المنفذ 5173، host 0.0.0.0
+    - دعم متغير GEMINI_API_KEY
+    - alias @ للجذر
+
+tsconfig.json
+    الوظيفة: إعدادات TypeScript للمشروع.
+
+index.html
+    الوظيفة: نقطة الدخول HTML للتطبيق.
+
+server.ts
+    الوظيفة: خادم Express بديل (قد يُستخدم للتطوير أو النسخ القديمة).
+
+.env / .env.example
+    الوظيفة: متغيرات البيئة.
+    - الجذر: VITE_API_BASE_URL
+    - backend: DATABASE_URL، SECRET_KEY، POSTGRES_*، إلخ.
+
+
+4. مجلد الواجهة الأمامية (src/)
+--------------------------------------------------------------------------------
+
+4.1 نقطة الدخول
+--------------------------------------------------------------------------------
+
+src/main.tsx
+    الوظيفة: نقطة الدخول الرئيسية للتطبيق React.
+    - تحميل App
+    - تحميل index.css
+    - ربط التطبيق بعنصر #root
+
+src/App.tsx
+    الوظيفة: تعريف المسارات والمكون الرئيسي.
+    - ProtectedRoute: حماية الصفحات يتطلب تسجيل الدخول
+    - المسارات: /login، /dashboard، /cards، /expenses، /internet، /office،
+      /partners، /reports، /settings
+    - التحقق من الصلاحيات (canAccessSection)
+    - صفحة SimCards ضمن Office أو مسار منفصل
+
+src/index.css
+    الوظيفة: الأنماط العامة والتنسيقات.
+    - استيراد Tailwind CSS
+    - تخصيص الوضع الليلي: @custom-variant dark (&:where(.dark, .dark *))
+    - خط Cairo
+    - قواعد الطباعة (@media print):
+      * إجبار الوضع العادي (الفاتح) لجميع العناصر عند الطباعة
+      * .dark, .dark * { background: white; color: #0f172a; }
+      * إعدادات @page (A4، هوامش 1.5cm)
+
+
+4.2 المكونات والمشاركة
+--------------------------------------------------------------------------------
+
+src/components/Layout.tsx
+    الوظيفة: إعادة تصدير Layout من shared/components.
+
+src/shared/components/Layout.tsx
+    الوظيفة: الهيكل العام للتطبيق.
+    - الشريط الجانبي (Sidebar)
+    - الهيدر (Header)
+    - المحتوى الرئيسي
+    - دعم الوضع الليلي
+
+src/context/AppContext.tsx
+    الوظيفة: سياق التطبيق العالمي.
+    - إدارة حالة المستخدم الحالي
+    - تحميل البيانات: مشتركين، مواد، محفظة، مصروفات، شركاء، بطاقات،
+      إعدادات، إشعارات، سجل النشاط
+    - دوال التحديث والإضافة والحذف
+    - إدارة الوضع الليلي (darkMode)
+    - الإشعارات
+
+
+4.3 الصفحات (src/pages/)
+--------------------------------------------------------------------------------
+
+src/pages/Login.tsx
+    الوظيفة: صفحة تسجيل الدخول.
+
+src/pages/Dashboard.tsx
+    الوظيفة: لوحة التحكم الرئيسية.
+
+src/pages/Internet.tsx
+    الوظيفة: صفحة قسم الإنترنت (تحميل InternetPage من الوحدة).
+
+src/pages/Office.tsx
+    الوظيفة: صفحة قسم المكتب (المواد والمبيعات).
+
+src/pages/Cards.tsx
+    الوظيفة: صفحة البطاقات (Switch، Qi، المخزون).
+
+src/pages/Expenses.tsx
+    الوظيفة: صفحة المصروفات.
+
+src/pages/Partners.tsx
+    الوظيفة: صفحة الشركاء والموردين.
+
+src/pages/Reports.tsx
+    الوظيفة: التقارير الشاملة (جميع الأقسام).
+
+src/pages/Settings.tsx
+    الوظيفة: الإعدادات (المستخدمين، الصلاحيات، إلخ).
+
+src/pages/SimCards.tsx
+    الوظيفة: إدارة الخطوط (SIM).
+
+
+4.4 وحدات النظام (src/modules/)
+--------------------------------------------------------------------------------
+
+كل وحدة تحتوي عادة على:
+- page/: الصفحة الرئيسية للوحدة
+- api/: دوال استدعاء الـ API
+- docs/: توثيق الوحدة
+- tables.txt: وصف الجداول
+
+src/modules/internet/
+    internet/page/InternetPage.tsx
+        الوظيفة: الصفحة الرئيسية لقسم الإنترنت.
+        - قائمة المشتركين (FTTH و Wireless)
+        - فلترة: الاسم، المنطقة، FAT، نوع الاشتراك (FTTH/Wireless)
+        - إضافة/تعديل المشتركين
+        - تعبئة المحفظة (FTTH و Wireless)
+        - إدارة الفئات والمناطق وFAT
+        - إدارة المواد
+        - تقارير الإنترنت
+        - الخرائط (Leaflet + OpenStreetMap)
+    
+    internet/api/meta.api.ts: استدعاءات API للفئات والمناطق وFAT
+    internet/api/reports.api.ts: استدعاءات API للتقارير
+    internet/api/subscribers.api.ts: استدعاءات API للمشتركين
+
+src/modules/office/
+    office/page/OfficePage.tsx: صفحة إدارة المواد والمبيعات
+    office/api/materials.api.ts: استدعاءات API للمواد
+
+src/modules/cards/
+    cards/page/CardsPage.tsx: صفحة البطاقات (Switch، Qi، المخزون)
+    cards/api/cards.api.ts: استدعاءات API للبطاقات
+
+src/modules/expenses/
+    expenses/page/ExpensesPage.tsx: صفحة المصروفات
+    expenses/api/expenses.api.ts: استدعاءات API للمصروفات
+
+src/modules/partners_suppliers/
+    partners_suppliers/page/PartnersSuppliersPage.tsx: صفحة الشركاء والموردين
+    partners_suppliers/api/partners.api.ts: استدعاءات API للشركاء
+    partners_suppliers/api/suppliers.api.ts: استدعاءات API للموردين
+
+src/modules/settings/
+    settings/page/SettingsPage.tsx: صفحة الإعدادات
+    settings/api/settings.api.ts: استدعاءات API للإعدادات
+
+src/modules/dashboard/
+    dashboard/page/DashboardPage.tsx: لوحة التحكم (إحصائيات سريعة)
+
+
+4.5 واجهات API (src/api/)
+--------------------------------------------------------------------------------
+
+src/api/client.ts
+    الوظيفة: إعداد عميل HTTP للاتصال بالخادم (baseURL من .env).
+
+src/api/auth.ts: تسجيل الدخول والخروج
+src/api/users.ts: إدارة المستخدمين
+src/api/subscribers.ts: المشتركين
+src/api/internet.ts: بيانات الإنترنت (فئات، مناطق، إلخ)
+src/api/internetReports.ts: تقارير الإنترنت
+src/api/wallet.ts: المحفظة
+src/api/expenses.ts: المصروفات
+src/api/cards.ts: البطاقات
+src/api/materials.ts: المواد
+src/api/partners.ts: الشركاء
+src/api/suppliers.ts: الموردين
+src/api/settings.ts: الإعدادات
+src/api/notifications.ts: الإشعارات
+src/api/activityLog.ts: سجل النشاط
+src/api/simcards.ts: الخطوط
+src/api/office.ts: بيانات المكتب
+
+
+4.6 الأدوات والصلاحيات
+--------------------------------------------------------------------------------
+
+src/utils/authStorage.ts
+    الوظيفة: تخزين واسترجاع بيانات المصادقة (token، المستخدم) في localStorage.
+
+src/utils/permissions.ts
+    الوظيفة: التحقق من صلاحيات المستخدم (canAccessSection).
+
+src/utils/persistence.ts
+    الوظيفة: تخزين محلي (localStorage) للإعدادات.
+
+src/shared/permissions/permissions.ts
+    الوظيفة: تعريف الصلاحيات والأدوار.
+    - isAdmin، canAccessSection، canAction، canAccessLines
+    - الصلاحيات حسب القسم (dashboard، internet، office، إلخ)
+
+
+5. الخادم الخلفي (backend/)
+--------------------------------------------------------------------------------
+
+5.1 الهيكل العام
+--------------------------------------------------------------------------------
+
+backend/
+├── app/
+│   ├── main.py              # نقطة الدخول FastAPI
+│   ├── core/                # الإعدادات والأمان وقاعدة البيانات
+│   ├── routers/             # مسارات API
+│   ├── models/              # نماذج SQLAlchemy
+│   ├── schemas/             # مخططات Pydantic
+│   ├── shared/              # مسارات مشتركة (auth، users)
+│   └── modules/             # وحدات منظمة
+├── db/                      # سكربتات قاعدة البيانات
+├── scripts/                 # سكربتات الإعداد
+├── alembic.ini              # إعدادات Alembic للهجرة
+├── requirements.txt         # تبعيات Python
+└── .env                     # متغيرات البيئة (يُقرأ من backend/)
+
+
+5.2 الملفات الرئيسية
+--------------------------------------------------------------------------------
+
+backend/app/main.py
+    الوظيفة: تطبيق FastAPI الرئيسي.
+    - bootstrap_if_needed: إنشاء الجداول والمستخدم الافتراضي
+    - إعداد CORS (localhost، 127.0.0.1، 192.168.x.x، إلخ)
+    - تضمين جميع الـ routers
+
+backend/app/core/config.py
+    الوظيفة: إعدادات التطبيق.
+    - DATABASE_URL (افتراضي: PostgreSQL)
+    - SECRET_KEY، ALGORITHM، ACCESS_TOKEN_EXPIRE_MINUTES
+    - SMTP (اختياري)
+    - يقرأ من backend/.env
+
+backend/app/core/database.py
+    الوظيفة: اتصال قاعدة البيانات وجلسات SQLAlchemy.
+    - دعم PostgreSQL و SQLite (حسب DATABASE_URL)
+    - connect_args لـ SQLite: check_same_thread=False
+
+backend/app/core/security.py
+    الوظيفة: تشفير كلمات المرور والتحقق من JWT.
+
+backend/app/core/db_bootstrap.py
+    الوظيفة: إنشاء الجداول والأعمدة والمستخدم الافتراضي.
+
+backend/app/core/exception_handlers.py
+    الوظيفة: معالجة الأخطاء بشكل موحد.
+
+
+5.3 المسارات (Routers)
+--------------------------------------------------------------------------------
+
+backend/app/routers/auth.py: تسجيل الدخول
+backend/app/routers/users.py: المستخدمين
+backend/app/routers/subscribers.py: المشتركين
+backend/app/routers/internet_meta.py: الفئات والمناطق وFAT
+backend/app/routers/internet_reports.py: تقارير الإنترنت
+backend/app/routers/wallet.py: المحفظة
+backend/app/routers/expenses.py: المصروفات
+backend/app/routers/cards.py: البطاقات
+backend/app/routers/materials.py: المواد
+backend/app/routers/partners.py: الشركاء
+backend/app/routers/suppliers.py: الموردين
+backend/app/routers/settings.py: الإعدادات
+backend/app/routers/sim_cards.py: الخطوط
+backend/app/routers/notifications.py: الإشعارات
+backend/app/routers/activity_log.py: سجل النشاط
+
+
+5.4 الوحدات المنظمة (backend/app/modules/)
+--------------------------------------------------------------------------------
+
+backend/app/modules/internet/
+    routers/subscribers_router.py: مسارات المشتركين
+    routers/meta_router.py: مسارات الفئات والمناطق وFAT
+    routers/reports_router.py: مسارات التقارير
+    routers/wallet_router.py: مسارات المحفظة
+
+backend/app/modules/cards/
+    routers/cards_router.py: مسارات البطاقات
+
+backend/app/modules/expenses/
+    routers/expenses_router.py: مسارات المصروفات
+
+backend/app/modules/office/
+    routers/materials_router.py: مسارات المواد
+
+backend/app/modules/partners_suppliers/
+    routers/partners_router.py: مسارات الشركاء
+    routers/suppliers_router.py: مسارات الموردين
+
+backend/app/modules/settings/
+    routers/settings_router.py: مسارات الإعدادات
+
+
+5.5 النماذج والمخططات
+--------------------------------------------------------------------------------
+
+backend/app/models/models.py
+    الوظيفة: نماذج SQLAlchemy (جداول قاعدة البيانات).
+
+backend/app/schemas/schemas.py
+    الوظيفة: مخططات Pydantic للتحقق من البيانات.
+
+
+6. قاعدة البيانات
+--------------------------------------------------------------------------------
+
+6.1 نوع قاعدة البيانات
+--------------------------------------------------------------------------------
+- الافتراضي: PostgreSQL
+  * config.py: DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/king_office_new"
+  * backend/.env.example: POSTGRES_HOST، POSTGRES_PORT، POSTGRES_USER، POSTGRES_PASSWORD، POSTGRES_DB
+
+- الاختياري: SQLite
+  * إذا ضُبط DATABASE_URL ليبدأ بـ sqlite:/// (مثل sqlite:///./maktb.db)
+  * database.py يضيف connect_args={"check_same_thread": False} تلقائياً
+
+6.2 الجداول الرئيسية
+--------------------------------------------------------------------------------
+- users: المستخدمون
+- system_settings: إعدادات النظام (عتبات التنبيه، اسم المكتب، إلخ)
+- wallet_transactions: معاملات المحفظة (FTTH، Wireless)
+- subscribers: المشتركون
+- subscriber_history: سجل المشتركين
+- internet_zones: المناطق
+- internet_fats: نقاط FAT
+- subscription_categories: فئات الاشتراك (FTTH، Wireless)
+- internet_materials: مواد قسم الإنترنت
+- internet_material_sales: مبيعات المواد
+- office_materials: مواد قسم المكتب
+- office_customers: عملاء المكتب
+- office_sales، office_invoices، office_payments، office_installments
+- partners، partner_transactions
+- suppliers، supplier_transactions
+- card_wallet_transactions، card_purchases، card_sales
+- expenses: المصروفات
+- cashback_history: سجل الكاش باك
+- sim_packages، sim_numbers، sim_sales، sim_inventory_transactions
+- notifications: الإشعارات
+- activity_log: سجل النشاط
+
+6.3 سكربتات قاعدة البيانات
+--------------------------------------------------------------------------------
+- backend/db/schema_idempotent.sql
+- backend/db/king_office_new.sql
+- backend/scripts/init_db.py
+- backend/scripts/bootstrap_db.py
+- backend/scripts/clean_db.py
+
+
+7. التقارير القابلة للطباعة
+--------------------------------------------------------------------------------
+
+- الصفحات: InternetPage، Reports، ExpensesPage، CardsPage، PartnersSuppliersPage، SimCards
+- عند الطباعة (window.print): إجبار الوضع العادي عبر @media print في index.css
+- العناصر المخفية: print:hidden (أزرار، فلاتر، إلخ)
+- التقارير تبقى دائماً بالوضع الفاتح حتى لو كان النظام في الوضع الليلي
+
+
+8. الوضع الليلي
+--------------------------------------------------------------------------------
+
+- يُفعّل عبر class="dark" على عنصر الجذر (عادة html أو body)
+- النوافذ المنبثقة تدعم الوضع الليلي: تعبئة المحفظة، إضافة مشترك، إضافة فئة
+- التقارير المطبوعة تبقى دائماً بالوضع العادي
+
+
+9. سكربتات التشغيل والإعداد
+--------------------------------------------------------------------------------
+
+scripts/run_system_fixed.ps1: تشغيل النظام
+scripts/clean_db.py: تنظيف قاعدة البيانات
+backend/scripts/bootstrap_db.py: إعداد قاعدة البيانات
+backend/scripts/init_db.py: تهيئة قاعدة البيانات
+backend/run_backend.ps1: تشغيل الخادم الخلفي
+
+
+10. ملخص سريع للملفات المهمة
+--------------------------------------------------------------------------------
+
+| الملف                              | الوظيفة                          |
+|------------------------------------|----------------------------------|
+| src/App.tsx                        | المسارات والحماية                |
+| src/context/AppContext.tsx         | الحالة العالمية والبيانات       |
+| src/modules/internet/page/InternetPage.tsx | صفحة الإنترنت الكاملة |
+| src/pages/Reports.tsx               | التقارير الشاملة                 |
+| src/index.css                      | الأنماط وقواعد الطباعة           |
+| backend/app/main.py                | نقطة دخول API                    |
+| backend/app/core/config.py        | الإعدادات (قاعدة البيانات، JWT)  |
+| backend/app/core/database.py       | اتصال قاعدة البيانات             |
+| backend/app/models/models.py       | نماذج الجداول                    |
+
+================================================================================
+                              نهاية التقرير
+================================================================================

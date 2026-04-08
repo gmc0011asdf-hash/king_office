@@ -1,0 +1,97 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+.Python
+backend/venv/
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Build
+dist/
+build/
+*.egg-info/
+*.egg
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.manifest
+*.spec
+MANIFEST
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+.envrc
+!.env.example
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL dumps created من لوحة النسخ الاحتياطي
+backend/data/backups/*.sql
+
+# Logs & cache
+*.log
+logs/
+backend/logs/
+**/FIRST_LOGIN_ADMIN_PASSWORD.txt
+.cache/
+.pytest_cache/
+coverage/
+htmlcov/
+*.tsbuildinfo
+*.bak
+*~
+.tox/
+.nox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cursor (optional AI ignore)
+.cursorignore
+.cursorindexingignore
+
+# Misc (legacy SQLite archives under data/legacy/ covered by *.db above)
+*.har
+_tsc_err.txt
+.tmp_token
+*.dump
+tmp*.txt

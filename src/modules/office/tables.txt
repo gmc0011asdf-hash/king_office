@@ -1,0 +1,7 @@
+﻿MODULE: OFFICE
+
+TABLES:
+- office_materials
+- office_customers
+- office_customer_history
+- office_sales

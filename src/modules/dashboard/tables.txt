@@ -1,0 +1,13 @@
+﻿MODULE: DASHBOARD
+
+Common source tables:
+- subscribers
+- wallet_transactions
+- expenses
+- office_materials
+- office_sales
+- partners
+- partner_transactions
+- card_purchases
+- card_sales
+- system_settings

@@ -1,0 +1,9 @@
+﻿MODULE: PARTNERS_SUPPLIERS
+
+TABLES:
+- partners
+- partner_transactions
+
+POTENTIAL / REVIEW:
+- suppliers
+- supplier_transactions

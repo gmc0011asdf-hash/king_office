@@ -1,0 +1,817 @@
+{
+  "name": "King Office — إشعارات تيليجرام (انتهاء / ديون / ترويج / مكتب)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Docker + n8n: حل Connection refused\n\nداخل حاوية n8n **لا تستخدم `localhost`** لـ Postgres على جهاز Windows.\n\n### اعتماد Postgres (قيم مشروعك)\n- **Host:** `host.docker.internal`\n- **Port:** `5432`\n- **Database:** `king_office_new`\n- **User:** `postgres`\n- **Password:** `1234`\n- **SSL:** معطّل (محلي)\n\nإن كان Postgres في **حاوية أخرى** على نفس docker-compose: استخدم **اسم الخدمة** (مثل `postgres`) بدل `host.docker.internal`.\n\n### ما لا يصلح لـ Postgres\n- **ngrok** للويب فقط؛ لا يُدخل كـ Host لقاعدة البيانات.\n\nتفاصيل إضافية: `docker/N8N-POSTGRES-DOCKER.txt`\n\n---\n\n## اعتماد غير مضبوط\n**Credentials → Postgres** ثم اربط الاعتماد بكل عُقد **PG — …** (5 عُقد).\n\n## Telegram\nاربط توكن البوت لعُقد **Telegram** الخمس.\n\n## تشغيل\nManual Trigger للتجربة | Schedule 09:00 يومياً",
+        "height": 640,
+        "width": 460,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1520,
+        -320
+      ],
+      "id": "note-import-ar",
+      "name": "📌 تعليمات الاستيراد"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -240
+      ],
+      "id": "manual-trigger-001",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -880,
+        -80
+      ],
+      "id": "schedule-daily-9",
+      "name": "Schedule Trigger (يومي 09:00)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "expiry_warn_days",
+              "value": 7,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -640,
+        -160
+      ],
+      "id": "set-config",
+      "name": "Set — إعدادات"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, real_name, phone, user_code, expiration_date, telegram_chat_id\nFROM subscribers\nWHERE telegram_chat_id IS NOT NULL\n  AND expiration_date IS NOT NULL\n  AND expiration_date BETWEEN CURRENT_DATE\n      AND (CURRENT_DATE + ($1::int * INTERVAL '1 day'))\nORDER BY expiration_date;",
+        "options": {
+          "queryReplacement": "={{ [$json.expiry_warn_days] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -400,
+        -160
+      ],
+      "id": "pg-expiry",
+      "name": "PG — انتهاء الاشتراك",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "f4e8b2a0-6c1d-4e5f-9a8b-7d6c5b4a3920",
+          "name": "King Office Postgres — king_office_new"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fe1",
+              "leftValue": "={{ $json.telegram_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        -160
+      ],
+      "id": "filter-expiry",
+      "name": "Filter — انتهاء"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        -160
+      ],
+      "id": "sib-expiry",
+      "name": "Split — انتهاء"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "={{ 'مرحباً ' + ($json.real_name || 'مشتركنا الكريم') + '\\n\\nتنبيه: اشتراكك يقترب من الانتهاء.\\nتاريخ الانتهاء: ' + $json.expiration_date + '\\nالرجاء التجديد لتفادي انقطاع الخدمة.\\n\\nرمز المستخدم: ' + ($json.user_code || '—') }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        -160
+      ],
+      "id": "tg-expiry",
+      "name": "Telegram — انتهاء"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, real_name, phone, user_code, debt, telegram_chat_id\nFROM subscribers\nWHERE telegram_chat_id IS NOT NULL\n  AND debt IS NOT NULL\n  AND debt > 0\nORDER BY debt DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -400,
+        120
+      ],
+      "id": "pg-debt-internet",
+      "name": "PG — ديون الإنترنت",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "f4e8b2a0-6c1d-4e5f-9a8b-7d6c5b4a3920",
+          "name": "King Office Postgres — king_office_new"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fd1",
+              "leftValue": "={{ $json.telegram_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        120
+      ],
+      "id": "filter-debt",
+      "name": "Filter — ديون إنترنت"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        120
+      ],
+      "id": "sib-debt",
+      "name": "Split — ديون إنترنت"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "={{ 'مرحباً ' + ($json.real_name || 'مشتركنا الكريم') + '\\n\\nتنبيه مالي: يوجد رصيد مستحق على اشتراك الإنترنت.\\nالمبلغ المستحق: ' + String($json.debt) + ' د.ع\\n\\nللاستفسار يرجى التواصل مع المكتب.\\nرمز المستخدم: ' + ($json.user_code || '—') }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        120
+      ],
+      "id": "tg-debt",
+      "name": "Telegram — ديون إنترنت"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH phones AS (\n  SELECT COALESCE(NULLIF(TRIM(name), ''), '—') AS label,\n         phone_number,\n         sequence,\n         id\n  FROM internet_phones\n  ORDER BY sequence NULLS LAST, id\n  LIMIT 30\n),\nagg AS (\n  SELECT string_agg('• ' || label || ': ' || phone_number, E'\\n' ORDER BY sequence NULLS LAST, id) AS block\n  FROM phones\n)\nSELECT DISTINCT s.telegram_chat_id,\n       COALESCE(agg.block, 'لا توجد أرقام في دليل الهاتف حالياً.') AS phones_block\nFROM subscribers s\nCROSS JOIN agg\nWHERE s.telegram_chat_id IS NOT NULL;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -400,
+        400
+      ],
+      "id": "pg-promo",
+      "name": "PG — ترويج + دليل هاتف",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "f4e8b2a0-6c1d-4e5f-9a8b-7d6c5b4a3920",
+          "name": "King Office Postgres — king_office_new"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fp1",
+              "leftValue": "={{ $json.telegram_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        400
+      ],
+      "id": "filter-promo",
+      "name": "Filter — ترويج"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        400
+      ],
+      "id": "sib-promo",
+      "name": "Split — ترويج"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "={{ '📢 عروض وخدمات — أرقام التواصل (دليل الهاتف):\\n\\n' + ($json.phones_block || '') + '\\n\\nنشكر ثقتكم بمكتب الملك.' }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        400
+      ],
+      "id": "tg-promo",
+      "name": "Telegram — ترويج"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.telegram_chat_id,\n       oc.name AS customer_name,\n       oc.debt,\n       oc.phone AS oc_phone\nFROM office_customers oc\nINNER JOIN subscribers s ON s.telegram_chat_id IS NOT NULL\n  AND regexp_replace(COALESCE(s.phone, ''), '[^0-9]', '', 'g') <> ''\n  AND regexp_replace(COALESCE(s.phone, ''), '[^0-9]', '', 'g')\n      = regexp_replace(COALESCE(oc.phone, ''), '[^0-9]', '', 'g')\nWHERE oc.debt IS NOT NULL AND oc.debt > 0\n  AND oc.phone IS NOT NULL AND TRIM(oc.phone) <> '';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -400,
+        680
+      ],
+      "id": "pg-office-debt",
+      "name": "PG — ديون المكتب (تطابق هاتف)",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "f4e8b2a0-6c1d-4e5f-9a8b-7d6c5b4a3920",
+          "name": "King Office Postgres — king_office_new"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fod1",
+              "leftValue": "={{ $json.telegram_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        680
+      ],
+      "id": "filter-office-debt",
+      "name": "Filter — ديون مكتب"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        680
+      ],
+      "id": "sib-office-debt",
+      "name": "Split — ديون مكتب"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "={{ 'مرحباً ' + ($json.customer_name || 'عميلنا الكريم') + '\\n\\nتنبيه (قسم المكتب): يوجد رصيد مستحق.\\nالمبلغ: ' + String($json.debt) + ' د.ع\\n\\nللتسديد أو الاستفسار يرجى زيارة المكتب.\\nهاتف السجل: ' + ($json.oc_phone || '—') }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        680
+      ],
+      "id": "tg-office-debt",
+      "name": "Telegram — ديون مكتب"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (s.telegram_chat_id)\n  s.telegram_chat_id,\n  os.customer_name,\n  os.customer_phone,\n  os.monthly_installment,\n  os.installments_months,\n  os.total_with_commission,\n  os.date AS sale_date\nFROM office_sales os\nINNER JOIN subscribers s ON s.telegram_chat_id IS NOT NULL\n  AND os.customer_phone IS NOT NULL AND TRIM(os.customer_phone) <> ''\n  AND regexp_replace(COALESCE(s.phone, ''), '[^0-9]', '', 'g') <> ''\n  AND regexp_replace(COALESCE(s.phone, ''), '[^0-9]', '', 'g')\n      = regexp_replace(COALESCE(os.customer_phone, ''), '[^0-9]', '', 'g')\nWHERE LOWER(TRIM(COALESCE(os.payment_method, ''))) IN ('installments', 'installment')\n  AND os.monthly_installment IS NOT NULL\n  AND os.monthly_installment > 0\n  AND os.date >= (CURRENT_DATE - INTERVAL '365 days')\nORDER BY s.telegram_chat_id, os.date DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -400,
+        960
+      ],
+      "id": "pg-office-installments",
+      "name": "PG — أقساط المكتب",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "f4e8b2a0-6c1d-4e5f-9a8b-7d6c5b4a3920",
+          "name": "King Office Postgres — king_office_new"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fi1",
+              "leftValue": "={{ $json.telegram_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        960
+      ],
+      "id": "filter-installments",
+      "name": "Filter — أقساط"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        960
+      ],
+      "id": "sib-installments",
+      "name": "Split — أقساط"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "={{ 'مرحباً ' + ($json.customer_name || 'عميلنا الكريم') + '\\n\\nتذكير (قسم المكتب — أقساط):\\nالقسط الشهري: ' + String($json.monthly_installment) + ' د.ع\\nعدد الأشهر (حسب السجل): ' + String($json.installments_months ?? '—') + '\\nإجمالي مع العمولة (إن وُجد): ' + String($json.total_with_commission ?? '—') + '\\n\\nتاريخ أقرب سجل: ' + String($json.sale_date) + '\\nللاستفسار يرجى التواصل مع المكتب.' }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        80,
+        960
+      ],
+      "id": "tg-installments",
+      "name": "Telegram — أقساط"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        320,
+        1120
+      ],
+      "id": "noop-done",
+      "name": "انتهى السير"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set — إعدادات",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger (يومي 09:00)": {
+      "main": [
+        [
+          {
+            "node": "Set — إعدادات",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set — إعدادات": {
+      "main": [
+        [
+          {
+            "node": "PG — انتهاء الاشتراك",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG — انتهاء الاشتراك": {
+      "main": [
+        [
+          {
+            "node": "Filter — انتهاء",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter — انتهاء": {
+      "main": [
+        [
+          {
+            "node": "Split — انتهاء",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split — انتهاء": {
+      "main": [
+        [
+          {
+            "node": "Telegram — انتهاء",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG — ديون الإنترنت",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram — انتهاء": {
+      "main": [
+        [
+          {
+            "node": "Split — انتهاء",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG — ديون الإنترنت": {
+      "main": [
+        [
+          {
+            "node": "Filter — ديون إنترنت",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter — ديون إنترنت": {
+      "main": [
+        [
+          {
+            "node": "Split — ديون إنترنت",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split — ديون إنترنت": {
+      "main": [
+        [
+          {
+            "node": "Telegram — ديون إنترنت",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG — ترويج + دليل هاتف",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram — ديون إنترنت": {
+      "main": [
+        [
+          {
+            "node": "Split — ديون إنترنت",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG — ترويج + دليل هاتف": {
+      "main": [
+        [
+          {
+            "node": "Filter — ترويج",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter — ترويج": {
+      "main": [
+        [
+          {
+            "node": "Split — ترويج",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split — ترويج": {
+      "main": [
+        [
+          {
+            "node": "Telegram — ترويج",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG — ديون المكتب (تطابق هاتف)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram — ترويج": {
+      "main": [
+        [
+          {
+            "node": "Split — ترويج",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG — ديون المكتب (تطابق هاتف)": {
+      "main": [
+        [
+          {
+            "node": "Filter — ديون مكتب",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter — ديون مكتب": {
+      "main": [
+        [
+          {
+            "node": "Split — ديون مكتب",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split — ديون مكتب": {
+      "main": [
+        [
+          {
+            "node": "Telegram — ديون مكتب",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG — أقساط المكتب",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram — ديون مكتب": {
+      "main": [
+        [
+          {
+            "node": "Split — ديون مكتب",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG — أقساط المكتب": {
+      "main": [
+        [
+          {
+            "node": "Filter — أقساط",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter — أقساط": {
+      "main": [
+        [
+          {
+            "node": "Split — أقساط",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split — أقساط": {
+      "main": [
+        [
+          {
+            "node": "Telegram — أقساط",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "انتهى السير",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram — أقساط": {
+      "main": [
+        [
+          {
+            "node": "Split — أقساط",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": []
+}

@@ -1,0 +1,7 @@
+﻿MODULE: CARDS
+
+TABLES:
+- card_wallet_transactions
+- card_purchases
+- card_sales
+- cashback_history

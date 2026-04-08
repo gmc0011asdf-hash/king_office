@@ -1,0 +1,451 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -704,
+        -224
+      ],
+      "id": "f5b54ec5-aea9-4b56-9300-c742ef24c883",
+      "name": "Telegram Trigger",
+      "webhookId": "3e18b7ad-0ce7-460e-a19e-e9cafd049112",
+      "credentials": {
+        "telegramApi": {
+          "id": "1svYqkuGQyDDaXpw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const message = item.json.message || {};\n  const from = message.from || {};\n  const chat = message.chat || {};\n  const text = (message.text || '').trim();\n\n  const isPhone = /^07\\d{9}$/.test(text);\n  const displayName = [from.first_name || '', from.last_name || ''].join(' ').trim() || from.username || '';\n\n  return {\n    json: {\n      telegram_chat_id: chat.id || null,\n      telegram_first_name: from.first_name || '',\n      telegram_last_name: from.last_name || '',\n      telegram_username: from.username || '',\n      telegram_display_name: displayName,\n      text,\n      is_start: text === '/start',\n      is_phone: isPhone,\n      phone: isPhone ? text : null,\n      user_code: !isPhone && text !== '/start' ? text : null,\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -224
+      ],
+      "id": "8a8888e1-be51-469e-ac30-6648384b2a57",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9bd73482-9f98-4e92-88b3-20438aaec44a",
+              "leftValue": "={{ $json.is_start }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -256,
+        -224
+      ],
+      "id": "4c586295-f922-432f-be0e-637fe0b76171",
+      "name": "If Start"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript').item.json.telegram_chat_id }}",
+        "text": "=تم حفظ الايدي مبدئيًا. أرسل رقم الهاتف المكوّن من 11 رقمًا ويبدأ بـ 07 لإكمال الربط.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -352
+      ],
+      "id": "abbefc43-13c1-4fd1-beaf-63060c433fc6",
+      "name": "Telegram Start Message",
+      "webhookId": "967878c7-15b6-4fa6-b141-2e4ff798c461",
+      "credentials": {
+        "telegramApi": {
+          "id": "1svYqkuGQyDDaXpw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a1d5b12c-2f5b-4d8b-8ea6-504d94fe77c9",
+              "leftValue": "={{ $json.is_phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        -128
+      ],
+      "id": "a6e71c0d-09cc-4792-a5f8-17ad6a75b724",
+      "name": "If Phone"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript').item.json.telegram_chat_id }}",
+        "text": "=أرسل /start أولًا أو أرسل رقم الهاتف الصحيح المكوّن من 11 رقمًا ويبدأ بـ 07.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        256,
+        -224
+      ],
+      "id": "1613d6d1-5c25-4058-b08a-8020e0714b37",
+      "name": "Send a text message",
+      "webhookId": "39088449-0918-4696-bb8a-6edb58675c68",
+      "credentials": {
+        "telegramApi": {
+          "id": "1svYqkuGQyDDaXpw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, real_name, phone\nFROM subscribers\nWHERE phone = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [$('Code in JavaScript').item.json.phone] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        -64
+      ],
+      "id": "2c33ebda-5dff-4844-9fc5-82e3d4c133c6",
+      "name": "PG Find Subscriber By Phone",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "94phisPpcQ0Glw7g",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b154de68-2a68-4ec4-9fa2-7e37bf5e59fd",
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        464,
+        -64
+      ],
+      "id": "168e1a52-edcf-4c54-b36b-e91a20768db5",
+      "name": "If Subscriber Found"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript').item.json.telegram_chat_id }}",
+        "text": "=الرقم غير موجود في جدول subscribers، تعذر إكمال الربط.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        704,
+        -160
+      ],
+      "id": "3579c5d2-ba67-4aa6-ac3d-bfb3f720cfc1",
+      "name": "Telegram Not Found Message",
+      "webhookId": "c8ebb8b1-de1c-4ecd-9520-691e4ab6d9f5",
+      "credentials": {
+        "telegramApi": {
+          "id": "1svYqkuGQyDDaXpw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE subscribers\nSET telegram_chat_id = $1\nWHERE id = $2\nRETURNING id, real_name, phone, telegram_chat_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Code in JavaScript').item.json.telegram_chat_id, $('PG Find Subscriber By Phone').item.json.id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        704,
+        32
+      ],
+      "id": "ec87182e-9f86-4da5-8250-d74c4166f917",
+      "name": "PG Update Subscriber Telegram",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "94phisPpcQ0Glw7g",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript').item.json.telegram_chat_id }}",
+        "text": "=تم حفظ الايدي في قاعدة البيانات وربط الحساب بنجاح.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        32
+      ],
+      "id": "2de44e76-1307-4269-8dfd-cb43dd1ce067",
+      "name": "Telegram Success Message",
+      "webhookId": "ee6fc8f5-7160-4d20-84d5-e19227d54a26",
+      "credentials": {
+        "telegramApi": {
+          "id": "1svYqkuGQyDDaXpw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO telegram_users (\n  subscriber_id,\n  real_name,\n  phone,\n  telegram_chat_id\n)\nVALUES (\n  NULL,\n  $1,\n  NULL,\n  $2\n)\nON CONFLICT (telegram_chat_id)\nDO UPDATE SET\n  real_name = EXCLUDED.real_name\nRETURNING id, subscriber_id, real_name, phone, telegram_chat_id, created_at;",
+        "options": {
+          "queryReplacement": "={{ [$('Code in JavaScript').item.json.telegram_display_name, $('Code in JavaScript').item.json.telegram_chat_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -48,
+        -224
+      ],
+      "id": "3806b829-54eb-4de5-94a3-ddb2743fdb18",
+      "name": "PG Upsert Telegram Start",
+      "credentials": {
+        "postgres": {
+          "id": "94phisPpcQ0Glw7g",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO telegram_users (\n  subscriber_id,\n  real_name,\n  phone,\n  telegram_chat_id\n)\nVALUES (\n  $1,\n  $2,\n  $3,\n  $4\n)\nON CONFLICT (telegram_chat_id)\nDO UPDATE SET\n  subscriber_id = EXCLUDED.subscriber_id,\n  real_name = EXCLUDED.real_name,\n  phone = EXCLUDED.phone\nRETURNING id, subscriber_id, real_name, phone, telegram_chat_id, created_at;",
+        "options": {
+          "queryReplacement": "={{ [$('PG Find Subscriber By Phone').item.json.id, $('PG Find Subscriber By Phone').item.json.real_name, $('PG Find Subscriber By Phone').item.json.phone, $('Code in JavaScript').item.json.telegram_chat_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        336,
+        0
+      ],
+      "id": "2ec87d4e-58e1-4535-a067-297755515f7e",
+      "name": "PG Upsert Telegram User Link",
+      "credentials": {
+        "postgres": {
+          "id": "94phisPpcQ0Glw7g",
+          "name": "Postgres account 2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Start": {
+      "main": [
+        [
+          {
+            "node": "PG Upsert Telegram Start",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Phone": {
+      "main": [
+        [
+          {
+            "node": "PG Find Subscriber By Phone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Find Subscriber By Phone": {
+      "main": [
+        [
+          {
+            "node": "If Subscriber Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Subscriber Found": {
+      "main": [
+        [
+          {
+            "node": "PG Update Subscriber Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Not Found Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Update Subscriber Telegram": {
+      "main": [
+        [
+          {
+            "node": "PG Upsert Telegram User Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Upsert Telegram Start": {
+      "main": [
+        [
+          {
+            "node": "Telegram Start Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Upsert Telegram User Link": {
+      "main": [
+        [
+          {
+            "node": "Telegram Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ab48c0260ab22b2cc241aefbc482ac49d30e043c61840ccd4a62bd04354b3dc3"
+  }
+}

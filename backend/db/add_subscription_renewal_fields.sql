@@ -1,0 +1,5 @@
+ALTER TABLE subscribers
+  ADD COLUMN IF NOT EXISTS subscription_date DATE,
+  ADD COLUMN IF NOT EXISTS expiration_date DATE,
+  ADD COLUMN IF NOT EXISTS last_renewal_date DATE,
+  ADD COLUMN IF NOT EXISTS renewal_months INTEGER NOT NULL DEFAULT 1;

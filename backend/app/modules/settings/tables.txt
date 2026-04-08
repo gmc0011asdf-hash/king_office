@@ -1,0 +1,5 @@
+﻿MODULE: SETTINGS
+
+TABLES:
+- system_settings
+- users
