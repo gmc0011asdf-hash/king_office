@@ -1,11 +1,11 @@
 {
   "name": "king-office",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0-local",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:backend": "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "dev:backend": "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
     "start": "concurrently -k \"npm run dev:backend\" \"npm run dev\"",
     "clean:db": "python scripts/clean_db.py",
     "build": "vite build",
@@ -14,7 +14,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
@@ -37,7 +36,6 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "tailwindcss": "^4.1.14",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "typescript": "~5.8.2"
   }
 }

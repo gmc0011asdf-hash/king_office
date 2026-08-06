@@ -1,4 +1,4 @@
-"""نسخ احتياطي واسترجاع قاعدة PostgreSQL — للمدير فقط."""
+"""Local SQLite backup and restore endpoints — administrator only."""
 from __future__ import annotations
 
 import uuid
@@ -27,7 +27,7 @@ class BackupItemOut(BaseModel):
 
 class CreateBackupOut(BaseModel):
     ok: bool = True
-    message: str = "تم إنشاء النسخة الاحتياطية (PostgreSQL / pg_dump)"
+    message: str = "تم إنشاء نسخة احتياطية محلية من SQLite"
     backup: BackupItemOut
 
 
@@ -62,13 +62,37 @@ def _settings_row(db: Session) -> models.SystemSettings:
     return row
 
 
+def _backup_out(info: backup_service.BackupInfo) -> BackupItemOut:
+    return BackupItemOut(
+        filename=info.filename,
+        size_bytes=info.size_bytes,
+        modified_at=info.modified_at,
+    )
+
+
+def _activity(db: Session, user: models.User, action: str, details: str) -> None:
+    try:
+        db.add(
+            models.ActivityLog(
+                user_id=user.id,
+                user_name=user.name or user.email or "",
+                section="settings",
+                action=action,
+                details=details,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 @router.get("/settings", response_model=BackupSettingsOut)
 def get_backup_settings(
     db: Session = Depends(database.get_db),
     _: models.User = Depends(require_admin),
 ):
     row = _settings_row(db)
-    last = getattr(row, "backup_last_scheduled_at", None)
+    last = row.backup_last_scheduled_at
     return BackupSettingsOut(
         backup_storage_path=row.backup_storage_path,
         backup_schedule=(row.backup_schedule or "none").strip().lower(),
@@ -87,55 +111,20 @@ def put_backup_settings(
 ):
     try:
         parse_hhmm(body.backup_schedule_time)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     row = _settings_row(db)
-    path_raw = (body.backup_storage_path or "").strip()
-    row.backup_storage_path = path_raw if path_raw else None
+    row.backup_storage_path = (body.backup_storage_path or "").strip() or None
     row.backup_schedule = body.backup_schedule
-    row.backup_schedule_time = (body.backup_schedule_time or "02:00").strip()
-    row.backup_schedule_weekday = None
-    row.backup_schedule_month_day = None
-    if body.backup_schedule == "weekly":
-        row.backup_schedule_weekday = (
-            body.backup_schedule_weekday if body.backup_schedule_weekday is not None else 5
-        )
-    elif body.backup_schedule == "monthly":
-        row.backup_schedule_month_day = (
-            body.backup_schedule_month_day if body.backup_schedule_month_day is not None else 1
-        )
-
+    row.backup_schedule_time = body.backup_schedule_time.strip()
+    row.backup_schedule_weekday = body.backup_schedule_weekday if body.backup_schedule == "weekly" else None
+    row.backup_schedule_month_day = body.backup_schedule_month_day if body.backup_schedule == "monthly" else None
     db.commit()
     db.refresh(row)
-
-    try:
-        log = models.ActivityLog(
-            user_id=user.id,
-            user_name=user.name or user.email or "",
-            section="settings",
-            action="backup_settings_update",
-            details=f"إعدادات النسخ: مسار={row.backup_storage_path or 'افتراضي'}، جدولة={row.backup_schedule}",
-        )
-        db.add(log)
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    try:
-        sync_backup_schedule()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"حُفظت الإعدادات لكن فشل ضبط الجدولة: {e}") from e
-
-    last = row.backup_last_scheduled_at
-    return BackupSettingsOut(
-        backup_storage_path=row.backup_storage_path,
-        backup_schedule=(row.backup_schedule or "none").strip().lower(),
-        backup_schedule_time=row.backup_schedule_time or "02:00",
-        backup_schedule_weekday=row.backup_schedule_weekday,
-        backup_schedule_month_day=row.backup_schedule_month_day,
-        backup_last_scheduled_at=last.isoformat() if isinstance(last, datetime) else None,
-    )
+    _activity(db, user, "backup_settings_update", f"جدولة النسخ المحلي: {row.backup_schedule}")
+    sync_backup_schedule()
+    return get_backup_settings(db, user)
 
 
 @router.get("/list", response_model=list[BackupItemOut])
@@ -143,7 +132,7 @@ def list_backups(
     db: Session = Depends(database.get_db),
     _: models.User = Depends(require_admin),
 ):
-    return [BackupItemOut(**b.__dict__) for b in backup_service.list_backups(db)]
+    return [_backup_out(info) for info in backup_service.list_backups(db)]
 
 
 @router.post("/create", response_model=CreateBackupOut)
@@ -153,33 +142,10 @@ def create_backup(
 ):
     try:
         _, info = backup_service.create_backup_sql(db)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    try:
-        log = models.ActivityLog(
-            user_id=user.id,
-            user_name=user.name or user.email or "",
-            section="settings",
-            action="backup_create",
-            details=f"نسخ PostgreSQL: {info.filename} ({info.size_bytes} بايت)",
-        )
-        db.add(log)
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    return CreateBackupOut(
-        backup=BackupItemOut(
-            filename=info.filename,
-            size_bytes=info.size_bytes,
-            modified_at=info.modified_at,
-        )
-    )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    _activity(db, user, "backup_create", f"نسخة SQLite: {info.filename}")
+    return CreateBackupOut(backup=_backup_out(info))
 
 
 @router.get("/download-now")
@@ -187,33 +153,12 @@ def download_backup_now(
     db: Session = Depends(database.get_db),
     user: models.User = Depends(require_admin),
 ):
-    """ينشئ نسخة احتياطية فورية عبر pg_dump ويُعيدها مباشرةً كملف قابل للتحميل."""
     try:
-        out_path, info = backup_service.create_backup_sql(db)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    try:
-        log = models.ActivityLog(
-            user_id=user.id,
-            user_name=user.name or user.email or "",
-            section="settings",
-            action="backup_create",
-            details=f"تحميل مباشر: {info.filename} ({info.size_bytes} بايت)",
-        )
-        db.add(log)
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    return FileResponse(
-        path=str(out_path),
-        filename=info.filename,
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{info.filename}"'},
-    )
+        path, info = backup_service.create_backup_sql(db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    _activity(db, user, "backup_create", f"تحميل نسخة SQLite: {info.filename}")
+    return FileResponse(path=str(path), filename=info.filename, media_type="application/vnd.sqlite3")
 
 
 @router.get("/download/{filename}")
@@ -223,17 +168,13 @@ def download_backup(
     _: models.User = Depends(require_admin),
 ):
     try:
-        safe = backup_service.validate_backup_filename(filename)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    path = backup_service.resolve_backup_dir(db) / safe
+        safe_name = backup_service.validate_backup_filename(filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    path = backup_service.resolve_backup_dir(db) / safe_name
     if not path.is_file():
         raise HTTPException(status_code=404, detail="الملف غير موجود")
-    return FileResponse(
-        path=str(path),
-        filename=safe,
-        media_type="application/sql",
-    )
+    return FileResponse(path=str(path), filename=safe_name, media_type="application/vnd.sqlite3")
 
 
 @router.post("/restore")
@@ -243,43 +184,17 @@ def restore_backup(
     user: models.User = Depends(require_admin),
 ):
     try:
-        safe = backup_service.validate_backup_filename(body.filename)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    path = backup_service.resolve_backup_dir(db) / safe
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="الملف غير موجود")
-    user_id = user.id
-    user_name = user.name or user.email or ""
-    # أغلق جلسة ORM قبل psql الطويلة لتفريغ اتصال الحوض وتجنّب تعليق طلبات أخرى
-    db.close()
-    try:
+        safe_name = backup_service.validate_backup_filename(body.filename)
+        path = backup_service.resolve_backup_dir(db) / safe_name
         backup_service.restore_from_sql_file(path)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    db_log = database.SessionLocal()
-    try:
-        log = models.ActivityLog(
-            user_id=user_id,
-            user_name=user_name,
-            section="settings",
-            action="backup_restore",
-            details=f"استرجاع من: {safe}",
-        )
-        db_log.add(log)
-        db_log.commit()
-    except Exception:
-        db_log.rollback()
-    finally:
-        db_log.close()
-
-    return {
-        "ok": True,
-        "message": "تم تنفيذ الاسترجاع. يُنصح بإعادة تشغيل الخادم وتحديث الصفحة.",
-    }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    _activity(db, user, "backup_restore", f"استرجاع SQLite من: {safe_name}")
+    return {"ok": True, "message": "تم الاسترجاع. أعد تشغيل النظام لضمان فتح القاعدة الجديدة."}
 
 
 @router.post("/restore-upload")
@@ -288,61 +203,28 @@ async def restore_backup_upload(
     user: models.User = Depends(require_admin),
     file: UploadFile = File(...),
 ):
-    if not file.filename or not str(file.filename).lower().endswith(".sql"):
-        raise HTTPException(status_code=400, detail="يُسمح بملفات .sql فقط")
+    if not file.filename or not file.filename.lower().endswith(".sqlite3"):
+        raise HTTPException(status_code=400, detail="يُسمح بملفات .sqlite3 فقط")
 
-    max_bytes = 500 * 1024 * 1024
-    uid = uuid.uuid4().hex
-    temp_path = backup_service.resolve_backup_dir(db) / f"_restore_upload_{uid}.sql"
-    user_id = user.id
-    user_name = user.name or user.email or ""
-    orig_filename = file.filename or "upload.sql"
+    temp_path = backup_service.resolve_backup_dir(db) / f"_restore_upload_{uuid.uuid4().hex}.sqlite3"
     try:
         total = 0
-        with open(temp_path, "wb") as out:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
+        with temp_path.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
                 total += len(chunk)
-                if total > max_bytes:
-                    raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد المسموح (500 ميجابايت)")
-                out.write(chunk)
-        db.close()
+                if total > 500 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="حجم الملف يتجاوز 500 ميجابايت")
+                output.write(chunk)
         backup_service.restore_from_sql_file(temp_path)
     except HTTPException:
         raise
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
-        if temp_path.exists():
-            try:
-                temp_path.unlink()
-            except OSError:
-                pass
+        temp_path.unlink(missing_ok=True)
 
-    db_log = database.SessionLocal()
-    try:
-        log = models.ActivityLog(
-            user_id=user_id,
-            user_name=user_name,
-            section="settings",
-            action="backup_restore_upload",
-            details=f"استرجاع من ملف مرفوع: {orig_filename}",
-        )
-        db_log.add(log)
-        db_log.commit()
-    except Exception:
-        db_log.rollback()
-    finally:
-        db_log.close()
-
-    return {
-        "ok": True,
-        "message": "تم تنفيذ الاسترجاع من الملف المرفوع. يُنصح بإعادة تشغيل الخادم وتحديث الصفحة.",
-    }
+    _activity(db, user, "backup_restore_upload", f"استرجاع SQLite مرفوع: {file.filename}")
+    return {"ok": True, "message": "تم الاسترجاع. أعد تشغيل النظام."}
 
 
 @router.delete("/{filename}")
@@ -353,22 +235,9 @@ def delete_backup(
 ):
     try:
         backup_service.delete_backup(filename, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="الملف غير موجود") from None
-
-    try:
-        log = models.ActivityLog(
-            user_id=user.id,
-            user_name=user.name or user.email or "",
-            section="settings",
-            action="backup_delete",
-            details=f"حذف نسخة: {Path(filename).name}",
-        )
-        db.add(log)
-        db.commit()
-    except Exception:
-        db.rollback()
-
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _activity(db, user, "backup_delete", f"حذف نسخة SQLite: {Path(filename).name}")
     return {"ok": True, "message": "تم حذف النسخة الاحتياطية"}
