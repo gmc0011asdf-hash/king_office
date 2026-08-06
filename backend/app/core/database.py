@@ -1,20 +1,27 @@
-"""
-اتصال قاعدة البيانات - PostgreSQL فقط.
-النظام موحّد: FastAPI + PostgreSQL + React
-
-إن وُجد متغير البيئة DATABASE_URL يُستخدم مباشرة دون تحميل pydantic — مفيد لـ
-``alembic upgrade head`` ببيئة Python خفيفة (SQLAlchemy + psycopg2 فقط).
-"""
+"""Local SQLite database connection for King Office."""
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import BigInteger, create_engine, event, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
+    return "JSON"
+
+
+@compiles(BigInteger, "sqlite")
+def _compile_bigint_for_sqlite(_type, _compiler, **_kwargs):
+    # SQLite autoincrement works only with an INTEGER PRIMARY KEY.
+    return "INTEGER"
 
 
 def _resolve_database_url() -> str:
@@ -27,59 +34,53 @@ def _resolve_database_url() -> str:
 
 
 _url = _resolve_database_url()
-if not _url.startswith("postgresql"):
+if not _url.startswith("sqlite:///"):
     raise ValueError(
-        "النظام يدعم PostgreSQL فقط. "
-        "تأكد من ضبط DATABASE_URL في backend/.env أو في البيئة بصيغة: "
-        "postgresql://user:pass@host:port/dbname"
+        "وضع King Office المحلي يدعم SQLite فقط. "
+        "استخدم DATABASE_URL بصيغة sqlite:///path/to/king_office.sqlite3"
     )
 
-# Supabase / اتصال بعيد: pool + TCP keepalive + (SSL عند عدم استخدام localhost)
-_url_lower = _url.lower()
-try:
-    _pg_host = (make_url(_url).host or "").lower()
-except Exception:
-    _pg_host = ""
-
-_connect_args: dict = {
-    "connect_timeout": 10,
-    "keepalives": 1,
-    "keepalives_idle": 30,
-    "keepalives_interval": 10,
-    "keepalives_count": 5,
-}
-if "sslmode" not in _url_lower:
-    if _pg_host not in ("localhost", "127.0.0.1", "::1", ""):
-        _connect_args["sslmode"] = "require"
+_sqlite_path = Path(_url.removeprefix("sqlite:///"))
+if not _sqlite_path.is_absolute():
+    _sqlite_path = (Path(__file__).resolve().parents[2] / _sqlite_path).resolve()
+_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     _url,
-    connect_args=_connect_args,
+    connect_args={"check_same_thread": False, "timeout": 30},
     pool_pre_ping=True,
-    pool_recycle=300,
 )
 
 
-def mask_database_url(url: str | None = None) -> str:
-    """يعرض رابط الاتصال مع إخفاء كلمة المرور (للسجلات فقط)."""
-    from sqlalchemy.engine.url import make_url
+@event.listens_for(engine, "connect")
+def _enable_sqlite_pragmas(dbapi_connection, _connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
+
+def prepare_metadata_for_sqlite() -> None:
+    """Remove PostgreSQL-only JSONB casts before create_all on SQLite."""
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, JSONB) and column.server_default is not None:
+                default_text = str(column.server_default.arg)
+                if "::jsonb" in default_text:
+                    column.server_default = text("'{}'")
+
+
+def mask_database_url(url: str | None = None) -> str:
     raw = (url or "").strip() or _resolve_database_url()
     return make_url(raw).render_as_string(hide_password=True)
 
 
 def ftth_sync_connection_log_info() -> dict[str, str]:
-    """
-    معلومات آمنة للسجلات عند مزامنة FTTH: اسم القاعدة، الرابط المموّه، الجدول المستهدف.
-    """
-    from sqlalchemy.engine.url import make_url
-
-    u = make_url(_resolve_database_url())
-    db_name = u.database or ""
     return {
-        "db_name": db_name,
-        "masked_connection_url": u.render_as_string(hide_password=True),
-        "schema_table_target": "public.ftth_external_data",
+        "db_name": _sqlite_path.name,
+        "masked_connection_url": mask_database_url(),
+        "schema_table_target": "ftth_external_data",
     }
 
 
